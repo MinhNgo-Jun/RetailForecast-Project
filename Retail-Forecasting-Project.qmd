@@ -1,0 +1,416 @@
+---
+title: "Retail Project"
+author: Minh Ngo
+format: html
+execute:
+  echo: true
+---
+
+```{r}
+#| label: get-data
+#| message: false
+library(fpp3)
+library(readabs)
+get_my_data <- function(student_id) {
+  set.seed(student_id)
+  all_data <- readr::read_rds("https://bit.ly/monashretaildata")
+  while(TRUE) {
+    retail <- filter(all_data, `Series ID` == sample(`Series ID`, 1))
+    if(!any(is.na(fill_gaps(retail)$Turnover))) return(retail)
+  }
+}
+retail <- get_my_data(34667830)
+```
+
+# Question 1:
+Produce some plots of your series, and describe what you learn from each plot. [2 marks]
+
+```{r Time-series plot}
+#| message: false
+
+retail |> autoplot() + 
+  ggtitle('Turnover of Industries in Victoria from 1998 to 2022') +
+  labs(x='Monthly') +
+  theme(plot.title = element_text(size = 10))
+```
+
+According to the plot, the turnover of the Furniture, Floor Coverings, Houseware, and Textile Goods Retailing industry in Victoria from 1982 to 2022 displayed monthly fluctuations and an overall upward trend. A noticeable rise began around 1995, followed by a period of slower growth between 2008 and 2016. After that, turnover increased more sharply. Additionally, the variance in turnover expanded over time, indicating that the data is likely heteroskedastic, meaning the variability changes across the period.
+
+```{r Seasonal plot}
+retail %>% gg_season(Turnover) + ggtitle('Season: Turnover of Industries in each month in Victoria from 1998 to 2022')
+```
+
+The seasonal plot shows little variation in turnover between months before the year 2000. However, seasonal patterns became more pronounced from around 2005 onwards. In recent years, turnover has typically peaked in June, October, November, and December, while February consistently records the lowest figures.
+
+These seasonal fluctuations are consistent with industry behavior. High turnover in June can be attributed to end-of-financial-year sales, while the final months of the year align with holiday shopping, home renovations, and event hosting. Promotions and discount sales during these periods also contribute to the increased activity. In contrast, February typically reflects a post-holiday slowdown, when consumers reduce their spending and retailers offer fewer promotions, leading to lower turnover.
+
+```{r Subseries plot}
+retail %>% gg_subseries(Turnover) + ggtitle('Subseries: Turnover of Industries in each month in Victoria from 1998 to 2022')
+```
+
+The blue line in each graph represents the average monthly turnover for the industry between 1982 and 2022. On average, seasonal changes were not very pronounced in the earlier years. February and April consistently showed lower turnover levels compared to other months, while the last three months of the year—October, November, and December—often exhibited the highest turnover.
+
+Initially, the differences between months were minimal. However, after around 2005, a clear seasonal pattern began to emerge, with more distinct peaks and troughs across the year. This growing seasonality can be attributed to changes in consumer behavior in the modern era, where spending tends to increase during special events such as Christmas and New Year. This explains the sharp rise in turnover toward the end of the year.
+
+Additionally, the variation in turnover appears to be higher in November and December, suggesting greater fluctuations in spending during these months. In contrast, February consistently shows both low turnover and low variation, highlighting a significant contrast between peak and off-peak retail activity in this industry.
+
+# Question 2:
+Discuss the statistical features of the data, including the effect of COVID-19 on your series. [2 marks]
+
+According to these results, It is clear that the turnover of the Furniture, Floor Coverings, Houseware, and Textile Goods Retailing industry in Victoria experienced noticeable declines and heightened monthly variation in both 2008 and 2020, driven by significant global events. 
+
+In 2008, the Global Financial Crisis (GFC) led to a sharp drop in consumer confidence and spending, particularly on discretionary items such as home furnishings. Economic uncertainty, job losses, and tighter credit conditions resulted in many households postponing purchases, contributing to a decline in turnover. 
+
+In 2020, the outbreak of the COVID-19 pandemic caused widespread economic disruption due to lockdowns, supply chain issues, and restrictions on non-essential retail activity. These factors led to abrupt drops in turnover during lockdown months, followed by sharp rebounds when restrictions eased, resulting in high variability across months. 
+
+The instability observed in both years reflects how sensitive this industry is to broader economic shocks and changes in household spending behavior.
+
+# Question 3:
+Find an appropriate Box-Cox transformation for your data and explain why you have chosen the particular transformation parameter λ [2 marks]
+
+```{r Apply Box-Cox transformation}
+retail %>% features(Turnover, features = guerrero) %>% pull(lambda_guerrero)
+
+retail_transformed1 <- retail %>% mutate(Turnover_trans = box_cox(Turnover,0.8))
+retail_transformed1 %>% autoplot(Turnover_trans) + ggtitle('Turnover of Industries (log-transformed) in Victoria from 1998 to 2022 (lambda=0.8)') + labs(x='Monthly')
+
+retail_transformed <- retail %>% mutate(Turnover_trans = box_cox(Turnover,0.1))
+retail_transformed %>% autoplot(Turnover_trans) + ggtitle('Turnover of Industries (log-transformed) in Victoria from 1998 to 2022 (lambda=0.1)') + labs(x='Monthly')
+```
+
+Since the data exhibits characteristics of a multiplicative seasonal pattern with increasing values over time, a Box-Cox transformation was considered to stabilize the variance. A lambda (λ) value close to 0 is typically suitable in such cases, as it approximates a logarithmic transformation and helps mitigate heteroskedasticity. I chose λ = 0.1 for the Box-Cox transformation because it effectively reduced the difference in variance across time periods, offering improved stability compared to higher values of lambda. However, it is worth noting that some variance remains elevated in more recent years. I also tested the Guerrero method for selecting lambda, but it returned a negative value, which is not appropriate for the box_cox() transformation function. Lambda values closer to 1 were also evaluated but did not adequately stabilize the variance, reinforcing the choice of λ = 0.1 as a reasonable compromise. 
+
+# Question 4:
+Produce a plot of an STL decomposition of the transformed data. What do you learn from the plot? [2 marks]
+
+In the STL decomposition, I set the seasonal window to 13 (season(window = 13)) to allow for a slightly flexible estimation of the seasonal component in this monthly retail turnover data. Since the seasonal cycle repeats every 12 months, using a window of 13 provides a balance between capturing the yearly seasonality and allowing for gradual changes in the seasonal pattern over time. This is important because the strength and shape of the seasonal component appear to evolve throughout the series, especially after 2005. The slightly wider window helps smooth out short-term fluctuations while still adapting to long-term seasonal changes, enhancing the decomposition's accuracy.
+
+```{r STL decomposition}
+dcomp <- retail_transformed |> model(stl = STL(Turnover_trans~trend()+ season(window=13),robust=TRUE)) 
+components(dcomp) |> autoplot() + ggtitle('Decomposition plot of log-transformed turnover of Industries in Victoria from 1998 to 2022')
+```
+
+According to these plots:
+
+- trend: this element has been well captured, as it smoothly increases with a similar pattern to the data. The scale of it also the same as the data. We can see the upward trend in turnover of that industry in VIC from 1982 to 2022, strongly between 1995 and 2005. Growth is relatively smooth but shows some slowdowns and accelerations, likely due to Covid-19 and economic recession.
+
+- season_year: we can consider that the turnover has seasonality, meaning turnover experiences ups and downs each year (possibly retail cycle, customers usually spend on cleaning ad decorating the house for Christmas and New year eve), however, the variance is not stability over time. The contribution of seasonality to the original data is also small - the scale is really huge comparing to data. 
+
+- The residuals have the mean around zero, and variances of them look quite constant, indicating that the trend and seasonal components effectively capture most of the structure in the data. They varied a little higher at the early of period, around 2000 and in recent years, maybe due to economic disruptions and Covid-19, which is not captured in trend and season plot.
+
+# Question 5:
+What differencing would be required to make the data stationary? You should use a unit-root test as part of the discussion. [2 marks]
+
+```{r Test stationary of data}
+retail_transformed |> 
+  features(Turnover_trans, ljung_box, lag = 24)
+retail_transformed |> 
+  features(Turnover_trans, ljung_box, lag = 12)
+retail_transformed |> 
+  features(Turnover_trans, unitroot_kpss)
+```
+
+Since the p-value of the Ljung-Box test and KPSS test is below 0.05, we can conclude that
+
+-   The time series is not white noise (reject the null hypothesis of Ljung-Box test).
+
+-   The time series is not stationary (reject the null hypothesis of KPSS test).
+
+Taken together, we can conclude that the time series is not stationary. Therefore, we can consider some transformations that can make them stationary:
+
+```{r Differencing transformation}
+# Difference transformation with lag equal to 1
+kpss1<-retail_transformed |> 
+  features(difference(Turnover_trans,lag=1), list(unitroot_kpss,~mean(.,na.rm=TRUE)))
+
+# Double difference transformation with lag equal to 12 and 1
+kpss2<-retail_transformed |>
+  features(Turnover_trans |> difference(lag=12) |> difference(), 
+           list(unitroot_kpss,~mean(.,na.rm=TRUE)))
+
+bind_rows(
+  Diff1 = kpss1,
+  Diff12_Diff1 = kpss2,
+  .id = "Transformation")
+```
+
+According to the results, the KPSS unit root test produced a p-value of 0.1, which is greater than the 0.05 significance level. This means we fail to reject the null hypothesis, suggesting that the transformed data is stationary at the 5% level. To achieve stationary, a double differencing approach was applied—using both a lag of 12 (to address seasonality) and a lag of 1 (to remove trend). This transformation effectively stabilized the mean and made the time series suitable for further modeling.
+
+# Question 6:
+Describe the methodology used to create a short-list of appropriate ARIMA models and ETS models. Include discussion of AIC values as well as results from applying the models to a test-set consisting of the last 24 months of the data provided. [6 marks]
+
+```{r Split data - training/test}
+training_set <- retail_transformed %>% filter(Month <= max(Month) -24)
+test_set <- retail_transformed %>% filter(Month > max(Month) -24)
+```
+
+ETS Models:
+
+```{r Time-series plot - training}
+training_set |> autoplot(Turnover_trans)
+```
+
+According to the time-series plot, I can justify these element to select the ETS models :
+
+- Trend: The data clearly exhibits an upward trend over time. However, the rate of increase is not consistent — the trend appears to accelerate early, slow down between 1990 and 2000, and rise again toward the end. This pattern suggests that a simple additive or multiplicative trend may not fully capture the underlying dynamics. Therefore, I considered both additive and multiplicative trend components and used AIC values for model comparison. In addition, given the signs of the trend flattening at times, a damped trend (Ad or Md) was also evaluated to account for potential slowdown in growth.
+
+- Seasonality: Seasonal fluctuations appear relatively consistent over time, especially in earlier periods, suggesting an additive seasonal component may be appropriate. However, some recent years show increased variability in seasonal amplitude, which could indicate the presence of multiplicative seasonality. To ensure the model captures the seasonal structure accurately, I included both additive and multiplicative seasonality in the model selection process and relied on AIC for determining the best fit.
+
+- Error: The type of error (additive vs multiplicative) is not easily distinguishable from visualisation. Therefore, both additive and multiplicative error structures were tested and evaluated based on AIC criteria
+
+Taken together, these are appropriate ETS models should be fitted: 
+
+- AAA (error = additive, trend = additive, season = additive)
+
+- AAdA (error = additive, trend = additive damped, season = additive)
+
+- AMA (error = additive, trend = multiplicative, season = additive)
+
+- AAM (error = additive, trend = additive, season = multiplicative)
+
+- AAdM (error = additive, trend = additive damped, season = multiplicative)
+
+- AMM (error = additive, trend = multiplicative, season = multiplicative)
+
+- MAA (error = multiplicative, trend = additive, season = additive)
+
+- MAdA (error = multiplicative, trend = additive damped, season = additive)
+
+- MMA (error = multiplicative, trend = multiplicative, season = additive)
+
+- MAM (error = multiplicative, trend = additive, season = multiplicative)
+
+- MAdM (error = multiplicative, trend = additive damped, season = multiplicative)
+
+- MMM (error = multiplicative, trend = multiplicative, season = multiplicative)
+
+```{r ETS fit}
+retail_fit_ETS <- training_set |> select(-Turnover) |>
+  model(
+    AAA = ETS(Turnover_trans ~ error("A") + trend("A") + season("A")),
+    AAdA = ETS(Turnover_trans ~ error("A") + trend("Ad") + season("A")),
+    AMA = ETS(Turnover_trans ~ error("A") + trend("M") + season("A")),
+    AAM = ETS(Turnover_trans ~ error("A") + trend("A") + season("M")),
+    AAdM = ETS(Turnover_trans ~ error("A") + trend("Ad") + season("M")),
+    AMM = ETS(Turnover_trans ~ error("A") + trend("M") + season("M")),
+    MAA = ETS(Turnover_trans ~ error("M") + trend("A") + season("A")),
+    MAdA = ETS(Turnover_trans ~ error("A") + trend("Ad") + season("A")),
+    MMA = ETS(Turnover_trans ~ error("M") + trend("M") + season("A")),
+    MAM = ETS(Turnover_trans ~ error("M") + trend("A") + season("M")),
+    MAdM = ETS(Turnover_trans ~ error("M") + trend("Ad") + season("M")),
+    MMM = ETS(Turnover_trans ~ error("M") + trend("M") + season("M")),
+    auto = ETS(Turnover_trans)
+  )
+```
+
+```{r ETS Evaluation}
+# In-sample evaluation
+retail_fit_ETS %>% glance() %>% arrange(AICc)
+
+# Out-sample evaluation
+ets_forecast <- retail_fit_ETS |>
+  forecast(h = 24) 
+accuracy(ets_forecast,test_set,method="RMSE") %>% arrange(RMSE)
+```
+
+According to the AICc criterion, the AMM model (error = additive, trend = multiplicative, season = multiplicative) produced the lowest estimate, indicating it is the best-performing model in-sample. To out-sample test (by using test set), MMA model (error = multiplicative, trend = multiplicative, season = additive) provides the lowest number, while the automatically choosen model is the highest. Therefore, the AMM and MMA model are selected to represent for ETS model.
+
+ANOVA Models:
+
+```{r ACF/PACF plot ANOVA}
+training_set |>  gg_tsdisplay(
+  Turnover_trans |> difference(lag=12) |> difference(),
+                       plot_type = "partial",lag=36)
+```
+
+According to ACF and PACF of Box-cox and double difference transformation results, I can determine some plausible ARIMA models for this data set:
+
+Non-Seasonal: last significant lag (before m-1 = 11)
+
+-   ACF: Significant spikes at lag 1 and 2: suggests a MA(2) component.
+
+-   PACF: Significant spikes at lag 1,2,3 and 4: suggests an AR(4) component.
+
+Seasonal: the last seasonal lags of the PACF and ACF
+
+-   ACF: Significant spike at lag 12: suggests a SMA(1)
+
+-   PACF: Signifcant spike at lag 12,24: suggests a SAR(2)
+
+Difference: 2 times, lag = 12 and lag = 1; therefore, d = 1 and D = 1
+
+The mean of data is close to 0 suggests c = 0
+
+Taken together, these plausible models I determined are:
+
+-   MA+SMA: ARIMA(p = 0, d = 1, q = 2)(P = 0, D = 1, Q = 1)
+
+-   AR+SAR: ARIMA(p = 4, d = 1, q = 0)(P = 2, D = 1, Q = 0)
+
+-   MA+SAR: ARIMA(p = 0, d = 1, q = 2)(P = 2, D = 1, Q = 0)
+
+-   AR+SMA: ARIMA(p = 4, d = 1, q = 0)(P = 0, D = 1, Q = 1)
+
+```{r ANOVA fit}
+retail_fit_ARIMA <- training_set |>
+  model(
+    arima012011 = ARIMA(Turnover_trans ~ pdq(0,1,2) + PDQ(0,1,1)),
+    ariam410210 = ARIMA(Turnover_trans ~ pdq(4,1,0) + PDQ(2,1,0)),
+    arima012210 = ARIMA(Turnover_trans ~ pdq(0,1,2) + PDQ(2,1,1)),
+    arima410011 = ARIMA(Turnover_trans ~ pdq(4,1,0) + PDQ(0,1,1)),
+    auto_d1D1 = ARIMA(Turnover_trans ~ pdq(d=1) + PDQ(D=1),stepwise=FALSE,approx=FALSE),
+    auto = ARIMA(Turnover_trans,stepwise=FALSE,approx=FALSE)
+  )
+
+retail_fit_ARIMA
+```
+
+```{r ANOVA Evaluation}
+# In-sample evaluation
+retail_fit_ARIMA %>% glance() %>% arrange(AICc)
+
+# Out-sample evaluation
+ARIMA_forecast <- retail_fit_ARIMA |>
+  forecast(h = 24) 
+accuracy(ARIMA_forecast,test_set,method="RMSE") %>% arrange(RMSE)
+```
+
+According to the AICc result, the automatically choosen model ARIMA(p=5,d=0,q=0)(P=0,D=1,Q=1) has the lowest number. However, it does not have the same order of differencing with other models, which cannot be comparable with others. Therefore, automatically choosen model with double differencing ARIMA(p=4,d=1,q=0)(P=0,D=1,Q=2) is the best model based on AICc criteria. On the other hand, the RMSE test provides the different result. The ARIMA(p=0,d=1,q=2)(P=2,D=1,Q=0) has the lowest number, indicating that it is the best model based on out-sample test. These 2 models which provide the best estimate in AICc and RMSE are represented to ARIMA model.
+
+# Question 7:
+Choose one ARIMA model and one ETS model based on this analysis and show parameter estimates, residual diagnostics, forecasts and prediction intervals for both models. Diagnostic checking for both models should include ACF graphs and the Ljung-Box test. [8 marks]
+
+```{r AMM and MMA Models}
+# Parameter estimates
+retail_fit_ETS %>% select(AMM) %>% report()
+
+# Residual diagnostics
+retail_fit_ETS %>% select(AMM) %>% gg_tsresiduals(lag=36)
+augment(retail_fit_ETS) |>
+  filter(.model == "AMM") |>
+  features(.innov, ljung_box, lag=24)
+
+# Parameter estimates
+retail_fit_ETS %>% select(MMA) %>% report()
+
+# Residual diagnostics
+retail_fit_ETS %>% select(MMA) %>% gg_tsresiduals(lag=36)
+augment(retail_fit_ETS) |>
+  filter(.model == "MMA") |>
+  features(.innov, ljung_box, lag=24)
+
+# Forecast
+ets_forecast %>% filter(.model == "AMM" | .model=="MMA") %>% autoplot(retail_transformed,level=80)
+```
+
+Based on ACF graphs, both models have the some noticeable spikes (at lag 2,3,4, etc.). Overall, the mean of them are likely to be 0, and the variance look constant, although the year 2000 or recent years displayed unusually high variance. They also do not pass the ljung_box test, as p-value is lower than 0.05, indicating that some autocorrelation may remain unaccounted for by the models. Therefore, we do not conclude that the residuals are white noise, and this suggests that these ETS models may not have fully captured all the structure in the data. 
+
+```{r ARIMA Models}
+# Parameter estimates
+retail_fit_ARIMA %>% select(auto_d1D1) %>% report()
+
+# Residual diagnostics
+retail_fit_ARIMA %>% select(auto_d1D1) %>% gg_tsresiduals(lag=36)
+augment(retail_fit_ARIMA) |>
+  filter(.model == "auto_d1D1") |>
+  features(.innov, ljung_box, lag=24)
+
+# Parameter estimates
+retail_fit_ARIMA %>% select(arima012210) %>% report()
+
+# Residual diagnostics
+retail_fit_ARIMA %>% select(arima012210) %>% gg_tsresiduals(lag=36)
+augment(retail_fit_ARIMA) |>
+  filter(.model == "arima012210") |>
+  features(.innov, ljung_box, lag=24)
+
+# Forecast
+ARIMA_forecast %>% filter(.model == "auto_d1D1" | .model=="arima012210") %>% autoplot(retail_transformed,level=80)
+```
+
+The ARIMA models demonstrate stronger performance in residual diagnostics. Specifically, the ARIMA(0,1,2)(2,1,0) model shows only one significant autocorrelation spike at lag 6, while the automatically selected ARIMA model exhibits no significant spikes, suggesting a better fit. Similar to the ETS models, both ARIMA models have residuals with a mean close to zero and exhibit constant variance, except for slight deviations around the year 2000 and in recent years. Furthermore, both models pass the Ljung-Box test, with p-values of 0.90 for the auto ARIMA model and 0.69 for the ARIMA(0,1,2)(2,1,0) model. These results indicate that the ARIMA models effectively capture the underlying structure of the data and leave minimal autocorrelation in the residuals.
+
+# Question 8:
+Compare the results obtained from each of your preferred models. Which method do you think gives the better forecasts? Explain with reference to the test-set. [2 marks]
+
+```{r ETS vs ARIMA Evaluation}
+accuracy(ets_forecast,test_set,method="RMSE") %>% filter(.model=='AMM' | .model == "MMA") %>% 
+  bind_rows(accuracy(ARIMA_forecast,test_set,method="RMSE") %>% filter(.model=="arima012210"|.model=="auto")) %>%
+  arrange(RMSE)
+```
+
+According to RMSE metrics, the ETS models demonstrate better forecasting performance, with the MMA model (error = multiplicative, trend = multiplicative, season = additive) performing the best. Although it does not exhibit as strong residual diagnostics as the ARIMA models, it still achieves lower prediction error on the test set. This indicates that the MMA model, despite some minor shortcomings in residual behavior, is more suitable for forecasting due to its superior out-of-sample accuracy.
+
+# Question 9:
+Apply your two chosen models to the full data set, re-estimating the parameters but not changing the model structure. Produce out-of-sample point forecasts and 80% prediction intervals for each model for two years past the end of the data provided. [4 marks]
+
+To perform well in forecasting, I decided to choose the models that has the best metrics in RMSE in each methods, which are ARIMA(0,1,2)(2,1,0) and MMA (error = multiplicative, trend = multiplicative, season = additive) models. 
+
+```{r Forecast full dataset}
+final_fit <- retail_transformed %>% 
+  model(
+    MMA = ETS(Turnover_trans ~ error("M") + trend("M") + season("A")),
+    arima012210 = ARIMA(Turnover_trans ~ pdq(0,1,2) + PDQ(2,1,1))
+  )
+
+final_fc <- final_fit %>% forecast(h=24)
+final_fc %>% autoplot(retail_transformed,level=80)
+```
+
+# Question 10:
+Obtain up-to-date data from the ABS website (Table 11). You may need to use the previous release of data, rather than the latest release. Compare your forecasts with the actual numbers. How well did you do? [4 marks]
+
+```{r Get actual data}
+abs_data <- read_abs(cat_no='8501.0',table=11) %>% filter(series_id == retail$`Series ID`)
+abs<- abs_data %>% mutate(State = 'Victoria',
+                                Industry = 'Furniture, floor coverings, houseware and textile goods retailing',
+                                `Series ID` = series_id,
+                                Month = yearmonth(date),
+                                Turnover = value,
+                                Turnover_trans = box_cox(Turnover,0.1)) %>%
+  select(colnames(retail_transformed)) %>% as_tsibble(key=c(State,Industry))
+
+actual <- abs %>% filter_index("2022 Dec" ~.)
+```
+
+```{r Forecast Evaluation}
+accuracy(final_fc,actual) %>% select(.model,RMSE)
+final_fc %>% autoplot(abs,level=80)
+```
+
+The ETS model, specifically the MMA model (error = multiplicative, trend = multiplicative, season = additive), achieved a RMSE of 0.20, while the ARIMA(0,1,2)(2,1,0) model had a slightly higher RMSE of 0.28 on the test set. These values indicate that both models performed reasonably well, with the ETS model showing a slight edge in point forecast accuracy.
+
+According to the plot, the 80% prediction intervals of MMA model captured most of the actual values, while the ARIMA model show slightly higher. Overall, the forecasts aligned quite well with the actual values, especially from the ETS model, indicating that the selected modeling approaches were appropriate for this time series.
+
+# Question 11:
+Discuss the benefits and limitations of the models for your data. [3 marks]
+
+Benefits: 
+
+- ETS: The ETS model offers a flexible framework by explicitly modeling the error, trend, and seasonal components. This structural decomposition enhances interpretability, allowing us to observe how each component contributes to the overall pattern. In this case, ETS performed well on out-of-sample forecasts, achieving a lower RMSE (0.20), which suggests it effectively captured the underlying seasonality and trend in the data.
+
+- ARIMA: ARIMA models excel in terms of residual diagnostics. The selected ARIMA configuration passed the Ljung-Box test, indicating that the residuals are free from significant autocorrelation. This suggests that the model effectively captured the temporal dependencies in the data. ARIMA is also adept at handling non-stationary data through differencing, which is particularly useful when trends and seasonal effects are not stable over time.
+
+Limitations:
+
+- ETS: Despite strong predictive performance, ETS models demonstrated weaker residual diagnostics. The residuals showed minor autocorrelation and non-constant variance in specific periods (e.g., around 2000 and recent years), indicating that some structural aspects of the data may not be fully captured.
+
+- ARIMA: While the residuals were well-behaved, the ARIMA model yielded a higher RMSE (0.28) compared to ETS, indicating less accurate forecasts. Additionally, ARIMA does not offer explicit decomposition into trend and seasonal components, making interpretation more challenging. It also requires careful preprocessing, including differencing and potentially Box-Cox transformation, to ensure stationarity. 
+
+To improve forecasting in the presence of external shocks (e.g., COVID-19, economic volatility), more advanced approaches such as dynamic regression models could be employed. These allow for the inclusion of exogenous variables—such as consumer confidence, mobility trends, or employment indicators—providing greater explanatory power and adaptability to structural changes in the data environment.
+
+# Question 12:
+Ensure graphs are properly labelled, including appropriate units of measurement. [3 marks]
+
+
+
+
+
+
+
+
+
+
+
+
+
